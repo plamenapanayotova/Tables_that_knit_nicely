@@ -1,0 +1,506 @@
+---
+title: "Some helpful tips for formatting tables"
+output: html_document
+author: Plamena Panayotova
+date: "2025-03-24"
+---
+<br>
+<br>
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+
+library(tidyverse)
+library(ggplot2)
+library(forcats)
+library(gridExtra)
+library(flextable)
+library(knitr)
+library(kableExtra)
+library(flextable)
+library(broom)
+library(texreg)
+library(car)
+library(lmtest)
+library(sandwich)
+library(vtable)
+library(skimr)
+
+
+
+listings <- read_csv("listings_edinburgh.csv")
+
+# Reproduce changes from Tutorials 1 and 2:
+
+listings <- filter(listings,
+                   price >= 25, price <= 1000, bathrooms <= 5) %>%
+  drop_na(price, room_type)
+
+
+# Coerce room_type from character to factor
+
+listings <- mutate(listings,
+                   room_type = factor(room_type),
+                   property_type = factor(property_type))
+
+```
+
+
+
+```{r}
+
+listings <- listings %>% 
+  mutate(property_type = fct_collapse(property_type,
+                                      Bespoke = c("Aparthotel", "Barn", "Boat", "Casa particular (Cuba)", "Earth house", "Hut", "Loft", "Tiny house", "Windmill", "Other" ),
+                                      Apartment = c("Apartment", "Bed and breakfast", "Guest suite", "Serviced apartment", "Chalet", "Condominium"),
+                                      House = c("Bungalow", "Cottage", "Guesthouse", "House", "Townhouse", "Villa"),
+                                      Hotel = c("Boutique hotel", "Hotel"),
+                                      Rustic = c("Cabin", "Camper/RV", "Campsite", "Farm stay", "Hostel", "Tent")
+                                       )
+      )
+
+
+listings$property_type <- factor(listings$property_type, 
+                                 levels = c("Apartment", "House", "Rustic", "Hotel", "Bespoke"))
+
+```
+
+# 1. Descriptive statistics
+
+<br>
+
+
+## 1.1 Variables:
+
+```{r}
+table_1 <- data.frame(
+  Variable = c("price", "accommodates", "room_type", "bedrooms", "bathrooms","review_scores_ratings_rating", "property_type"),
+  Description = c("Price of property ($)", "Accommodation capacity", "Room type", "Number of bedrooms", "Number of bathrooms", "Review score rating", "Type of property"),
+  Unit= c("US dollars", "n guests", "Entire home/apt, Private room, Shared room", "n bedrooms", "n bathrooms", "Score rating (0-100)", "Bespoke, Apartment, House,    Hotel, Rustic"))
+
+kable(table_1, caption = "Table 1. Variable Names and Definitions. Source: InsideAirbnb.com", format = "html") %>%
+  kable_styling(full_width = FALSE, position = "left")
+```
+
+<br>
+<br>
+
+## 1.2 Summary statistics and a chart of the dependent variable:
+
+
+```{r}
+
+
+table_2 <- listings %>%
+  reframe(
+    Variable = "Price of property (\\$)", # the two back slashes escape the dollar sign, so the document knits properly
+    Count = round(length(price), 0), 
+    Mean = round(mean(price, na.rm = TRUE), 1), 
+    SD = round(sd(price, na.rm = TRUE), 1), 
+    Min = round(min(price, na.rm = TRUE), 1), 
+    Q1 = round(quantile(price, 0.25, na.rm = TRUE), 1), 
+    Median = round(median(price, na.rm = TRUE), 1), 
+    Q3 = round(quantile(price, 0.75, na.rm = TRUE), 1), 
+    Max= round(max(price, na.rm = TRUE), 1), 
+    IQR = round(IQR(price, na.rm = TRUE), 1))
+
+
+
+kable(table_2, caption = "Table 2. Summary Statistics of Price of Property ($). Source: InsideAirbnb.com", format = "html") %>%
+  kable_styling(full_width= TRUE, position ="left")
+
+
+# The below code creates a table with alternative formatting (un-comment if you want to try, I like the above version better):
+# price <- listings$price
+# 
+# table_2.1 <- tibble(
+#   Statistic = c("Count", "Mean", "Standard Deviation", "Min", "Q1", "Median", "Q3", "Max", "IQR"),
+#   Value = c(
+#     round(length(price), 0),  # Round count to 0 decimal places
+#     round(mean(price, na.rm = TRUE), 1), 
+#     round(sd(price, na.rm = TRUE), 1), 
+#     round(min(price, na.rm = TRUE), 1), 
+#     round(quantile(price, 0.25, na.rm = TRUE), 1), 
+#     round(median(price, na.rm = TRUE), 1), 
+#     round(quantile(price, 0.75, na.rm = TRUE), 1), 
+#     round(max(price, na.rm = TRUE), 1), 
+#     round(IQR(price, na.rm = TRUE), 1))
+# )
+# 
+# 
+# kable(table_2.1, caption = "Table 2. Summary Statistics for Price. Source: InsideAirbnb.com", format = "html") %>%
+#   kable_styling(full_width= TRUE, position ="left")
+
+
+
+
+```
+
+<br>
+<br>
+
+```{r}
+# A histogram of price:
+listings %>%
+  ggplot(aes(price)) +
+  geom_histogram(colour="deepskyblue4", fill="deepskyblue3", binwidth=20) +
+  labs(title = "Figure1. Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Price ($)",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com") +
+  scale_x_continuous(breaks = seq(0, 1000, by = 200)) +
+  theme_minimal()
+
+```
+
+<br>
+<br>
+
+## 1.3 Summary statistics and a chart of the key independent variable:
+
+
+```{r}
+table_3 <- listings %>%                       
+  count(room_type) %>% 
+  mutate(
+    Percent = round(n / sum(n) * 100, 1)) %>%
+  add_row(
+    room_type = "Total",               # Label for the summary row
+    n = sum(.$n),                      # Total count
+    Percent = 100) %>%  
+  arrange(room_type) 
+
+
+
+# Print as kable table with formatting
+kable(table_3, col.names = c("Room Type", "Count", "Percent"),
+      caption = "Table 3. Frequency Table of Room Type. Source: Inside AirBnB.", format= "html") %>%
+  kable_styling(full_width= TRUE, position ="left")
+
+```
+
+<br>
+<br>
+```{r}
+
+# Bar chart of room_type:
+
+listings %>% 
+  ggplot(aes(room_type)) +
+  geom_bar(colour="deepskyblue4", fill="deepskyblue3") +
+  labs(title = "Figure 2. AirBnB room types in Edinburgh",
+       x = "Type of room",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com") +
+  theme_minimal()
+
+```
+
+<br>
+<br>
+
+## 1.4 Summary statistics of all variables:
+
+
+```{r}
+
+# Select variables and compute summary statistics
+table_4 <- listings %>%
+  reframe(
+    Variable = c("Price", "Review Score", "Bedrooms", "Bathrooms", "Accommodation Capacity"),
+    Count = c(sum(!is.na(price)), sum(!is.na(review_scores_rating)), sum(!is.na(bedrooms)), sum(!is.na(bathrooms)), sum(!is.na(accommodates))),
+    Mean = round(c(mean(price, na.rm = TRUE), mean(review_scores_rating, na.rm = TRUE), mean(bedrooms, na.rm = TRUE), mean(bathrooms, na.rm = TRUE), mean(accommodates, na.rm = TRUE)), 1),
+    SD = round(c(sd(price, na.rm = TRUE), sd(review_scores_rating, na.rm = TRUE), sd(bedrooms, na.rm = TRUE), sd(bathrooms, na.rm = TRUE), sd(accommodates, na.rm = TRUE)), 1),
+    Min = c(min(price, na.rm = TRUE), min(review_scores_rating, na.rm = TRUE), min(bedrooms, na.rm = TRUE), min(bathrooms, na.rm = TRUE), min(accommodates, na.rm = TRUE)),
+    Q1 = c(quantile(price, 0.25, na.rm = TRUE), quantile(review_scores_rating, 0.25, na.rm = TRUE), quantile(bedrooms, 0.25, na.rm = TRUE), quantile(bathrooms, 0.25, na.rm = TRUE), quantile(accommodates, 0.25, na.rm = TRUE)),
+    Median = c(median(price, na.rm = TRUE), median(review_scores_rating, na.rm = TRUE), median(bedrooms, na.rm = TRUE), median(bathrooms, na.rm = TRUE), median(accommodates, na.rm = TRUE)),
+    Q3 = c(quantile(price, 0.75, na.rm = TRUE), quantile(review_scores_rating, 0.75, na.rm = TRUE), quantile(bedrooms, 0.75, na.rm = TRUE), quantile(bathrooms, 0.75, na.rm = TRUE), quantile(accommodates, 0.75, na.rm = TRUE)),
+    Max = c(max(price, na.rm = TRUE), max(review_scores_rating, na.rm = TRUE), max(bedrooms, na.rm = TRUE), max(bathrooms, na.rm = TRUE), max(accommodates, na.rm = TRUE)),
+    IQR = round(c(IQR(price, na.rm = TRUE), IQR(review_scores_rating, na.rm = TRUE), IQR(bedrooms, na.rm = TRUE), IQR(bathrooms, na.rm = TRUE), IQR(accommodates, na.rm = TRUE)), 1)
+  )
+
+# Print table using kable
+kable(table_4, caption = "Table 4. Summary Statistics of Key Variables. Source: Inside AirBnB.", format = "html") %>%
+  kable_styling(full_width = TRUE, position = "left")
+```
+
+
+```{r}
+
+table_5 <- listings %>%                       
+  count(property_type) %>%
+  mutate(
+    Percent = round(n / sum(n) * 100, 1)
+  ) %>%
+  add_row(
+    property_type = "Total",               # Label for the summary row
+    n = sum(.$n),                          # Total count
+    Percent = 100                          # Total percentage
+  ) 
+
+ 
+# Print as kable table with formatting
+kable(table_5, col.names = c("Property Type", "Count", "Percent"),
+      caption = "Table 5. Frequency Table of Property Type. Source: Inside AirBnB.", format= "html") %>%
+  kable_styling(full_width= TRUE, position ="left")
+
+table_6 <- listings %>%                       
+  count(room_type) %>%
+  mutate(
+    Percent = round(n / sum(n) * 100, 1)
+  ) %>%
+  add_row(
+    room_type = "Total",               # Label for the summary row
+    n = sum(.$n),                          # Total count
+    Percent = 100                          # Total percentage
+  ) 
+
+ 
+# Print as kable table with formatting
+kable(table_6, col.names = c("Room Type", "Count", "Percent"),
+      caption = "Table 6. Frequency Table of Room Type. Source: Inside AirBnB.", format= "html") %>%
+  kable_styling(full_width= TRUE, position ="left")
+
+```
+
+
+<br>
+<br>
+
+## 1.5 Summary statistics of price by room and property type:
+
+
+
+```{r results ="asis"}
+
+
+table_7 <- listings %>%
+  group_by(room_type) %>%
+  summarise(
+    "Count" = n(),
+    "Percent" = round((n() / nrow(listings)) * 100, 1),
+    "Mean (price)" = round(mean(price), 1),
+    "SD (price)" = round(sd(price), 1),
+    "Median (price)" = median(price, na.rm = TRUE),
+    "IQR(price)" = IQR(price, na.rm = TRUE)
+  ) %>%
+  rename("Type of Room" = room_type) %>%  # Rename column before printing
+  kable(caption = "Table 7. Property Price ($) by Room Type. Source: Inside AirBnB.", format= "html") %>%
+    kable_styling(full_width = TRUE, position = "left")
+
+
+table_7
+
+```
+
+
+
+
+```{r}
+table_8 <- listings %>%
+  group_by(property_type) %>%
+  summarise(
+    "Count" = n(),
+    "Percent" = round((n() / nrow(listings)) * 100, 1),
+    "Mean (price)" = round(mean(price), 1),
+    "SD (price)" = round(sd(price), 1),
+    "Median (price)" = median(price, na.rm = TRUE),
+    "IQR(price)" = IQR(price, na.rm = TRUE)
+  ) %>%
+  arrange(desc(Count)) %>%
+  rename("Type of Property" = property_type) %>%  # Rename column before printing
+  kable(caption = "Table 8. Property Price ($) by Property Type", format= "html") %>%
+    kable_styling(full_width = TRUE, position = "left")
+
+table_8
+
+```
+
+
+
+```{r}
+
+#A less flexible alternative:
+
+# table_9 <- listings %>%
+#   rename(
+#     "Number of Bedrooms" = bedrooms,
+#     "Number of Bathrooms" = bathrooms,
+#     "Accommodation Capacity" = accommodates,
+#     "Price" = price,
+#     "Review Score Rating" = review_scores_rating
+#   ) %>%
+#   sumtable(vars = c("Price", "Review Score Rating", "Number of Bedrooms", "Number of Bathrooms", "Accommodation Capacity"))
+# 
+# table_9
+
+```
+
+
+
+```{r}
+# table_10 <- listings %>%
+#   rename(
+#     "Type of Room" = room_type,
+#     "Type of Property" = property_type) %>%
+#  sumtable(vars = c("Type of Room", "Type of Property"))
+# 
+# table_10
+
+```
+<br>
+<br>
+
+# 2. Initial tests:
+<br>
+<br>
+
+## 2.1 An ANOVA test:
+
+```{r}
+#Save the model and model summary:
+anova_model_1 <- listings %>%
+  aov(log(price) ~ room_type, data = .)  # Store the aov model first
+
+anova_test_1 <- summary(anova_model_1)
+
+
+
+tidy_anova <- tidy(anova_model_1)
+tidy_anova$term[tidy_anova$term == "room_type"] <- "Type of Room"
+
+
+
+tidy_anova <- tidy(anova_model_1) %>%
+  rename(
+    "Variable" = term,               # Rename 'term' to 'Variable'
+    "Degrees of Freedom" = df,
+    "Sum of Squares" = sumsq,
+    "Mean Square" = meansq,
+    "F-Value" = statistic,
+    "p-Value" = p.value
+  ) %>%
+  mutate(Variable = ifelse(Variable == "room_type", "Type of Room", Variable),
+         `p-Value` = format.pval(`p-Value`, eps = .001, digits = 2)
+         )
+
+kable(tidy_anova, caption = "Table 11. ANOVA Test Results for Room Type vs. Log Price. Source: Inside AirBnB.", format = "html") %>%
+  kable_styling(full_width = TRUE, position = "left")
+
+
+```
+<br>
+<br>
+
+## 2.2. A t-test:
+
+```{r}
+t_test_result <-  listings %>% 
+  filter(room_type != "Shared room") %>% t.test(log(price) ~ room_type, .)
+
+t_test_table <- tidy(t_test_result)
+
+t_test_table <- tidy(t_test_result) %>%
+  select(-method, -alternative) %>%  # Remove unwanted columns
+  rename(
+    "Estimate (Difference)" = estimate,
+    "Mean Group 1" = estimate1,
+    "Mean Group 2" = estimate2,
+    "t-statistic" = statistic,
+    "p-value" = p.value,
+    "Lower CI (95%)" = conf.low,
+    "Upper CI (95%)" = conf.high
+  ) %>%
+  mutate(
+    `p-value` = format.pval(`p-value`, eps = 0.001, digits = 3),
+    across(where(is.numeric), ~ round(., digits = 3))
+  )
+
+kable(t_test_table, caption = "Table 12. T-test Log Price vs. Room_type. Source: Inside AirBnB.", format = "html") %>%
+  kable_styling(full_width = TRUE, position = "left")
+
+```
+<br>
+<br>
+
+
+## 2.3 Pearson's correlation test:
+
+```{r warning=FALSE}
+
+
+cor_result <- cor.test(~ log(price) + review_scores_rating, data = listings)
+
+
+cor_table <- tidy(cor_result) %>%
+  mutate(
+    # Rename 'review_scores_rating' to 'Review Score'
+    term = "Review Score",
+    # Format p-value in scientific notation if < 0.001
+    p.value = format.pval(p.value, eps = 0.001, digits = 3)
+  ) %>%
+ rename(
+    "Variable" = term,
+    "Correlation (r)" = estimate,
+    "t-statistic" = statistic,
+    "p-value" = p.value,
+    "Lower CI (95%)" = conf.low,  
+    "Upper CI (95%)" = conf.high
+  ) %>%
+  select(
+    Variable, 
+    `Correlation (r)`, 
+    `t-statistic`, 
+    `Lower CI (95%)`,  # Or use `conf.low` if not renamed
+    `Upper CI (95%)`, 
+    `p-value`
+  ) %>%
+  mutate(across(where(is.numeric), round, digits = 3))
+
+
+kable(cor_table, caption = "Table 13. Pearson's correlation Log Price vs. Review Score. Source: Inside AirBnB.", format = "html") %>%
+  kable_styling(full_width = TRUE, position = "left")
+
+```
+<br>
+<br>
+
+
+# 3. The models:
+
+
+```{r}
+
+m4_log_1 <- listings %>%
+  mutate(log_price = log(price)) %>%
+  lm(log_price ~ room_type + property_type + bathrooms + bedrooms + accommodates + review_scores_rating, 
+     data = .)
+
+
+```
+
+
+```{r}
+
+m4_log_2 <- listings %>%
+  mutate(log_price = log(price)) %>%
+  lm(log_price ~ room_type + property_type + bathrooms + bedrooms + accommodates, 
+     data = .)
+
+```
+
+
+```{r results="asis"}
+
+htmlreg(list(m4_log_1, m4_log_2),
+        stars = 0.05,
+          digits = 2, 
+          caption = "Table 12. Regression results. Dependent variable: Price(logged)",
+          caption.above = TRUE,
+          groups = list("Room Type" = 2:3, "Property Type" = 4:7),
+          custom.coef.names = c("(Intercept)","Private Room","Shared Room","Bespoke","Hotel","House","Rustic","Number of Bathrooms","Number of Bedrooms","Accomodation","Review Score"))
+
+```
+
+
